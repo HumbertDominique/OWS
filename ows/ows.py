@@ -13,51 +13,38 @@ def function_name(parameters):
 
 import numpy as np
 
-def psd(N, r0, dx, l0 = 0, L0 = -1):
+def psd(dimmat, dxp, r0, wl, L0 = -1):
     """
     Generates a Phase power spectrum (PSD).
     Parameters:
-    N (int): Size of the phase screen matrix (must be even?).
-    r0 (float): Fried's parameter
-    dx (float): Pixel size [m].
-    lo (float): Inner scale of turbulence.
-    L0 (float): Outer scale of turbulence (set to -1 for infinite scale).
+    dimmat (int): Size of the phase screen matrix (should must be even).
+    r0 (float): Fried's parameter [m]
+    dxp (float): Pupil plane pixel size [m/rad].
+    L0 (float): Outer scale of turbulence [m] (set to -1 for infinite scale).
 
     Returns:
     PSD (ndarray): 2D array representing the generated phase screen.
     """    
     # 2025.03.14 - Original version based on paola.pro (22.12.2022) by Laurent Jolissaint (HES-SO), lines 3659+
-    # Not sure where all the coefficients come from
-    #TODO: Change inherited variable names to something more meaningful
-    #TODO: decide weather to implement l0
-    Df = 1/(N*dx)
     
-    fx = np.linspace(-N/2,N/2-1,N)* Df
-    fpcoohfx, fpcoohfy = np.meshgrid(fx,fx) # Since it will be computed anyways, fpcoohfy will be used instead of rotating the xmatrix.
-    # Prepare the radius matrix
-    xpcoohf = np.zeros((N,N))
-    for i in range(N):
-        for j in range(N):
-            xpcoohf[i][j]= np.sqrt(fpcoohfx[i][j]**2 + fpcoohfy[i][j]**2)  # pupil plane coordianate radius
+    # Input checks
+    if not isinstance(dimmat, int):
+        raise TypeError(f"Expected {int} for dimmat, got {type(dimmat)}")
+    if dimmat % 2 != 0:
+        raise ValueError("dimmat must be an even integer")
 
-    # Von Karman corrected PSD (L0 != -1) PAOLA:3666
-    if L0 == -1:
-        # TODO: Evaluate wheather it is necessary to check weather (px.val <= 0)
-        # dphi = 6.883877*(xpcoohf[w]/r0)**(5/3)
-        Watm = np.zeros((N,N), dtype=np.double)
-        for i in range(N):
-            for j in range(N):
-                if fpcoohfx[i][j]**2 + fpcoohfy[i][j]**2 != 0:
-                    Watm[i][j] = 0.022896/(r0**(5/3))*(fpcoohfx[i][j]**2 + fpcoohfy[i][j]**2)**(-11/6)
-    else:
-        #w = np.where(fpcoohfx != 0) #TODO: implement actual logic if required
-        # TODO: Evaluate wheather it is necessary to check weather (px.val <= 0)
-        #dphi = 0.171661*(L0/r0)**(5/3)*((1.005635)-(2*np.pi*xpcoohf[w]/L0))**(5/6)
-                               #beselk(5/6,2*np.pi*xpcoohf/L0)
-        Watm = 0.022896/(r0**(5/3))*(fpcoohfx**2+fpcoohfy**2 +1/(L0**2))**(-11/3)
+    r0l = r0*(2*wl)**1.2
 
-    PSD = Watm#*dphi
-    PSD[int(N/2), int(N/2)] = 0
+    Df = 1/(2*dxp)
+    #fx = np.linspace(-dimmat//2,dimmat//2,dimmat)* Df
+    fx = np.linspace(-1,1,dimmat)*Df*dimmat//2
+
+    freqX, freqY = np.meshgrid(fx,fx)
+    freqR= np.sqrt(freqX**2 + freqY**2)  # pupil plane spatial frequency radius
+
+    w = freqR.nonzero()
+    PSD = np.zeros_like(freqR, dtype=np.float64)  # Ensure PSD is the same shape and dtype as freqRtype
+    PSD[w] = 0.0229*r0l**(-5.0/3) *(freqR[w]**2 + (L0 != -1) / L0**2)**(-11.0/6) # Spatial power spectrum with outer scale
     return PSD
 
 def phase_screen(N, PSD, dxp, SEED = None):
