@@ -47,7 +47,7 @@ def psd(dimmat, dxp, r0, wl, L0 = -1):
     PSD[w] = 0.0229*r0l**(-5.0/3) *(freqR[w]**2 + (L0 != -1) / L0**2)**(-11.0/6) # Spatial power spectrum with outer scale
     return PSD
 
-def phase_screen(N, PSD, dxp, SEED = None):
+def phase_screen(dimmat, PSD, dxp, SEED = None, PUPIL = True):
     """
     Generates a phase screen base on a Phase Spectrum Density (PSD)
     Parameters:
@@ -59,27 +59,37 @@ def phase_screen(N, PSD, dxp, SEED = None):
     Returns:
         PSD (ndarray): complex 2D array representing the generated phase screen.
     """  
-    # 2025.03.14 - Original version based on paola.pro (22.12.2022) by Laurent Jolissaint (HES-SO), lines 3659+
-    # Not sure where all the coefficients come from
-    #TODO: Change inherited variable names to something more meaningful
-
-    tmp2 = PSD*(N*dxp)**2
-
+    PP = np.zeros((dimmat+1, dimmat+1)) # Phase power [dimmat+1, dimmat+1] in order to have a pixcele in the middle [rad^2/m^-2]
+   
+    PP[0:dimmat,0:dimmat] = PSD*(dimmat*dxp)**2
     #TODO: understand what this is here
-    tmp2[0 : N, N-1] = tmp2[0 : N, 0] # last row = 1st row
-    tmp2[N-1, 0 : N] = tmp2[0, 0 : N] # last column = 1st column
-    tmp2[N-1, N-1] = tmp2[0, 0] # bottom right corner = top left corner
+    PP[0 : dimmat, dimmat] = PP[0 : dimmat, 0] # last row = 1st row
+    PP[dimmat,0 : dimmat] = PP[0, 0 : dimmat] # last column = 1st column
+    PP[dimmat, dimmat] = PP[0, 0] # bottom right corner = top left corner
 
     if SEED is not None:
       np.random.seed(SEED)
-    tmp2 = np.sqrt(tmp2)* np.random.rand(N, N)
-    tmp1 = np.sqrt(2)*(tmp2+np.rot90(tmp2,2))/2
-    tmp2 = np.random.rand(N,N)*2*np.pi
+    PSA = np.sqrt(PP)* np.random.rand(dimmat+1,dimmat+1) # random draw to create a random phase spectrum [rad/m^(-1)] AMPLITUDE
+    PSA = np.sqrt(2)*(PSA+np.rot90(np.rot90(PSA,2)))/2 # forced even amplitude of wf spectrum
+    PSop = np.random.rand(dimmat+1,dimmat+1)*2*np.pi # random draw for the phase of the spectrum of the optical phase
     # in order to make sure that the phase is real,
-    # (1) the real part of the phase spectrum is forced to be even
-    # (2) the imaginary part of phase spectrum is forced to be odd
-    tmp2 =  (tmp1 * np.cos(0.5 * (tmp2 - np.rot90(tmp2)))) +1j*(tmp1 * np.sin(0.5 * (tmp2 - np.rot90(tmp2))))
-    phaseft = tmp2
+    # (1) the real part of the phase spectrum is forced to be even (as in "f(x) is even")
+    # (2) the imaginary part of phase spectrum is forced to be odd (as in "f(x) is odd")
+    phaseft =  (PSA * np.cos(0.5 * (PSop - np.rot90(np.rot90(PSop)))))[0:dimmat,0:dimmat] + 1j*(PSA * np.sin(0.5 * (PSop - np.rot90(np.rot90(PSop)))))[0:dimmat,0:dimmat]
 
-    #phaseft -= np.mean(phaseft) # remove piston?
-    return np.fft.ifft2(np.fft.ifftshift(phaseft))
+    MASK = np.ones((dimmat,dimmat))
+    if PUPIL is True:
+      pxR = np.linspace(-1 ,1,dimmat)*dimmat//2
+      xx, yy = np.meshgrid(pxR,pxR)
+      R= np.sqrt(xx**2 + yy**2)  # pupil plane spatial frequency radius
+      # Créer le masque pour exclure les pixels à l'intérieur du cercle
+      MASK[R > dimmat/2] = 0
+  
+    phase_screen = np.fft.ifft2(np.fft.ifftshift(phaseft))*MASK
+    phase_screen[MASK == 1] -= np.mean(phase_screen[MASK == 1])
+
+    Sp = np.sum(phase_screen)*dxp**2
+    apsf = np.fft.ifft2((MASK*np.exp(phase_screen)))/Sp
+    psf = np.abs(apsf)**2
+    phase_screen -= np.mean(-1j*phase_screen) # remove piston?
+    return phase_screen
