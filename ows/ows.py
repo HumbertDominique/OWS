@@ -58,7 +58,10 @@ def phase_screen(dimmat, PSD, dxp, SEED = None, PUPIL = True):
 
     Returns:
         PSD (ndarray): complex 2D array representing the generated phase screen.
-    """  
+    """
+
+    df=1.0/(dimmat - dimmat % 2)/dxp
+
     PP = np.zeros((dimmat+1, dimmat+1)) # Phase power [dimmat+1, dimmat+1] in order to have a pixcele in the middle [rad^2/m^-2]
    
     PP[0:dimmat,0:dimmat] = PSD*(dimmat*dxp)**2
@@ -85,11 +88,11 @@ def phase_screen(dimmat, PSD, dxp, SEED = None, PUPIL = True):
       # Créer le masque pour exclure les pixels à l'intérieur du cercle
       MASK[R > dimmat/2] = 0
   
-    phase_screen = np.fft.ifft2(np.fft.ifftshift(phaseft))*MASK
+    phase_screen = ((np.fft.ifftshift(np.fft.ifft2(phaseft))*(dimmat*df)**2))*MASK
     phase_screen[MASK == 1] -= np.mean(phase_screen[MASK == 1])
 
-    Sp = np.sum(phase_screen)*dxp**2
-    apsf = np.fft.ifft2((MASK*np.exp(phase_screen)))/Sp
+    Sp = phase_screen.size*dxp**2
+    apsf = np.fft.ifftshift(np.fft.ifft2(np.fft.ifftshift(MASK*np.exp(-1j*phase_screen))))/Sp
+
     psf = np.abs(apsf)**2
-    phase_screen -= np.mean(-1j*phase_screen) # remove piston?
-    return phase_screen
+    return phase_screen, psf
