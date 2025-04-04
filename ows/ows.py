@@ -96,3 +96,5 @@ def phase_screen(dimmat, PSD, dxp, SEED = None, PUPIL = True):
 
     psf = np.abs(apsf)**2
     return phase_screen, psf
+
+
