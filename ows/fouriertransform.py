@@ -1,5 +1,7 @@
 """
 Module containing useful FFT based function and classes
+
+M. J. Townson, O. J. D. Farley, G. Orban de Xivry, J. Osborn, and A. P. Reeves, "AOtools: a Python package for adaptive optics modelling and analysis," Opt. Express 27, 31316-31329 (2019))
 """
 import numpy
 
