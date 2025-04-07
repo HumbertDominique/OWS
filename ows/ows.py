@@ -141,9 +141,12 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
          N_pad = (2**14)
       padded_pupil = np.zeros((N_pad,N_pad))
       padded_pupil[:dimmat,:dimmat] = MASK*phase_screen
+      padded_R = np.zeros((N_pad,N_pad))
+      padded_R[:dimmat,:dimmat] = R
       Sp = np.sum(R)*dxp**2
-      psf = mathft.ft2(padded_pupil,delta=1./dimmat)/Sp
-      psf = psf[N_pad//2-dimmat//2:N_pad//2+dimmat//2,N_pad//2-dimmat//2:N_pad//2+dimmat//2]
+      apsf = mathft.ft2(padded_R*(np.cos(padded_pupil)+1j*np.sin(padded_pupil)),delta=1./dimmat)/Sp
+      apsf = apsf[N_pad//2-dimmat//2:N_pad//2+dimmat//2,N_pad//2-dimmat//2:N_pad//2+dimmat//2]
+      psf = np.abs(apsf)**2
       returns[1] = psf
     
    return returns
