@@ -11,6 +11,7 @@ def function_name(parameters):
 
 import numpy as np
 from ows import fouriertransform as mathft
+from matplotlib import pyplot as plt
 
 
 def psd(dimmat, dxp, r0, wl, L0 = -1):
@@ -29,7 +30,7 @@ def psd(dimmat, dxp, r0, wl, L0 = -1):
    # ------------ Input checks ------------
    # ------------ Input checks ------------#
    # ------------ Input checks ------------
-   if not isinstance(dimmat, int):
+   if type(dimmat) != int:
        raise TypeError(f"Expected {int} for dimmat, got {type(dimmat)}")
    if dimmat % 2 != 0:
        raise ValueError("dimmat must be an even integer")
