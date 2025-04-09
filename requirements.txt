@@ -5,3 +5,4 @@ matplotlib
 ipywidgets
 ipympl
 ipykernel
+astropy

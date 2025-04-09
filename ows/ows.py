@@ -1,17 +1,6 @@
-def function_name(parameters):
-   """
-   Brief description of the function.
-   Parameters:
-   parameters (type): Description of the parameters.
-   Returns:
-   return_type: Description of the return value.
-   """
-   # TODO: Implement the function logic here
-   return
-
 import numpy as np
 from ows import fouriertransform as mathft
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt # for developpment only
 
 
 def psd(dimmat, dxp, r0, wl, L0 = -1):
@@ -35,14 +24,13 @@ def psd(dimmat, dxp, r0, wl, L0 = -1):
    if dimmat % 2 != 0:
        raise ValueError("dimmat must be an even integer")
    r0l = r0*(2*wl)**1.2
-   Df = 1/(2*dxp)
-   #fx = np.linspace(-dimmat//2,dimmat//2,dimmat)* Df
-   fx = np.linspace(-1,1,dimmat)*Df*dimmat//2
+   fx = np.linspace(-1,1,dimmat)*(1./(2*dxp))
    freqX, freqY = np.meshgrid(fx,fx)
-   freqR= np.sqrt(freqX**2 + freqY**2)  # pupil plane spatial frequency radius
+   freqR = np.sqrt(freqX**2 + freqY**2)  # pupil plane spatial frequency radius
    w = freqR.nonzero()
    PSD = np.zeros_like(freqR, dtype=np.float64)  # Ensure PSD is the same shape and dtype as freqRtype
-   PSD[w] = 0.0229*r0l**(-5.0/3) *(freqR[w]**2 + (L0 != -1) / L0**2)**(-11.0/6) # Spatial power spectrum with outer scale
+   PSD[w] = 0.0229*r0l**(-5.0/3) *(freqR[w]**2 + (L0 != -1)/L0**2)**(-11.0/6) # Spatial power spectrum with outer scale
+
    return PSD
 
 def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
@@ -55,13 +43,14 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
       SEED (int): Seed for the random number generator. (default None)
       PSF (bool): option to return the PSF associated with the phase screen
       PUPIL (bool): True will crop it to a pupil of diameter dimmat if PD = [0,0]
-      PD (ndarray of int): Pupil diameters in pixels. PD[outer diameter, inner diameter)
+      PD (ndarray of int): Pupil diameters in meters. PD[outer diameter, inner diameter)
 
    Returns (list):
       phase_screen (ndarray): real 2D array representing the generated phase screen.
       psf (ndarray): real 2D array representing the PSF associated with the phase screen
 
    TODO: Add a dimmat argument to allow more pixels on the phase screen and PSF than PSD.
+   TODO: Make it so the pupil diameters can be introduced either as pixel values or discances D [m] = D[px]/dxp (Needs to be checked)
 
    Based one WaveSeeingLimited.pro, Laurent Jolissaint, March 24, 2025 
    """
@@ -73,9 +62,9 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    if dxp <= 0:
       raise ValueError("dxp must be positive")
    if type(PD[0]) != int:
-      raise TypeError("Pupil diameters must be integers")
+      raise TypeError("Pupil diameters must be integers (for now)")
    if type(PD[1]) != int:
-      raise TypeError("Pupil diameters must be integers")
+      raise TypeError("Pupil diameters must be integers (for now)")
    dimmat = PSD.shape[0]
    if PD[0]!= 0:
       if PD[0] >= dimmat:
@@ -91,62 +80,73 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    # ------------ Phase screen ------------
    # ------------ Phase screen ------------
    returns = [[None],[None]]
-   
    rng = np.random.default_rng(seed=SEED)
 
-   pxR = np.linspace(-1 ,1,dimmat)*dimmat//2
+   pxR = np.linspace(-1 ,1,dimmat)*dxp*dimmat/2  
    xx, yy = np.meshgrid(pxR,pxR)
-   R= np.sqrt(xx**2 + yy**2)  # pupil plane spatial frequency radius
-   PP = np.zeros((dimmat+1, dimmat+1)) # Phase power [dimmat+1, dimmat+1] in order to have a pixcele in the middle [rad^2/m^-2]
+   R = np.sqrt(xx**2 + yy**2)  # pupil plane spatial frequency radius
+   pxRpx = np.linspace(-dimmat//2 ,dimmat//2,dimmat)
+   xx, yy = np.meshgrid(pxRpx,pxRpx)
+   Rpx = np.sqrt(xx**2 + yy**2)  # Pupil radius in pixel
+
+   PP = np.zeros((dimmat+1, dimmat+1)) # Phase power [dimmat+1, dimmat+1] in order to have a pixel in the middle [rad^2/m^-2]
    PP[0:dimmat,0:dimmat] = PSD*(dimmat*dxp)**2
    PP[0 : dimmat, dimmat] = PP[0 : dimmat, 0] # last row = 1st row
    PP[dimmat,0 : dimmat] = PP[0, 0 : dimmat] # last column = 1st column
    PP[dimmat, dimmat] = PP[0, 0] # bottom right corner = top left corner
 
-   PSA = np.sqrt(PP)* rng.normal(0, 1, size=(dimmat+1, dimmat+1)) # random draw to create a random phase spectrum [rad/m^(-1)] AMPLITUDE
-   PSA = np.sqrt(2)*(PSA+np.rot90(np.rot90(PSA,2)))/2 # forced even amplitude of wf spectrum
-   PSop = rng.normal(0, 1, size=(dimmat+1, dimmat+1))*2*np.pi # random draw for the phase of the spectrum of the optical phase
+   PSA = np.sqrt(PP)* rng.normal(size=(dimmat+1, dimmat+1)) # random draw to create a random phase spectrum [rad/m^(-1)] AMPLITUDE
+   PSA = np.sqrt(2)*(PSA+np.rot90(PSA,2))/2 # forced even (in frequency) amplitude of wf spectrum
+   PSop = rng.uniform(0, 1, size=(dimmat+1, dimmat+1))*2*np.pi # random draw for the phase of the spectrum of the optical phase
+   
    # in order to make sure that the phase is real,
    # (1) the real part of the phase spectrum is forced to be even (as in "f(x) is even")
    # (2) the imaginary part of phase spectrum is forced to be odd (as in "f(x) is odd")
-   phaseft =  (PSA * np.cos(0.5 * (PSop - np.rot90(np.rot90(PSop)))))[0:dimmat,0:dimmat] + 1j*(PSA * np.sin(0.5 * (PSop - np.rot90(np.rot90(PSop)))))[0:dimmat,0:dimmat]
+   phaseft =  (PSA * np.cos(0.5 * (PSop - np.rot90(PSop,2))))[0:dimmat,0:dimmat] + 1j*(PSA * np.sin(0.5 * (PSop - np.rot90(PSop,2))))[0:dimmat,0:dimmat]
    
    # ------------ PUPIL OPTION ------------
    # ------------ PUPIL OPTION ------------
    # ------------ PUPIL OPTION ------------
+   MASK = np.ones((dimmat,dimmat))
    if PUPIL is True:
-      MASK = np.ones((dimmat,dimmat))
       if PD[0] == 0:
-        MASK[R >= dimmat//2 +1] = 0
+        MASK[Rpx >= dimmat//2 +1] = 0
       else:
-         MASK[R >= PD[0]//2 +1] = 0
-         MASK[R < PD[1]//2] = 0
-   phase_screen = MASK*mathft.ift2(phaseft,dxp).real
+         MASK[Rpx >= PD[0]//2 +1] = 0
+         MASK[Rpx < PD[1]//2] = 0
+
+   if dimmat <= 2**5: 
+      N_pad = (2**6)
+   elif (2**5 < dimmat <= 2**6): 
+      N_pad = (2**8)
+   elif (2**6 < dimmat <= 2**7): 
+      N_pad = (2**10)
+   elif (2**7 < dimmat <= 2**8): 
+      N_pad = (2**12)
+   elif (2**8 < dimmat <= 2**9): 
+      N_pad = (2**14)
+
+   phase_screen = mathft.ift2(phaseft,dxp).real/500000
+   phase_screen -= np.mean(phase_screen)
    phase_screen[MASK == 1] -= np.mean(phase_screen[MASK == 1])
-   returns[0] = phase_screen
+
+   returns[0] = MASK*phase_screen
 
    # ------------ PSF OPTION ------------
    # ------------ PSF OPTION ------------
    # ------------ PSF OPTION ------------
    if PSF == True:
-      if dimmat <= 2**5: 
-         N_pad = (2**6)
-      elif (2**5 < dimmat <= 2**6): 
-         N_pad = (2**8)
-      elif (2**6 < dimmat <= 2**7): 
-         N_pad = (2**10)
-      elif (2**7 < dimmat <= 2**8): 
-         N_pad = (2**12)
-      elif (2**8 < dimmat <= 2**9): 
-         N_pad = (2**14)
+
       padded_pupil = np.zeros((N_pad,N_pad))
       padded_pupil[:dimmat,:dimmat] = MASK*phase_screen
       padded_R = np.zeros((N_pad,N_pad))
-      padded_R[:dimmat,:dimmat] = R
+      padded_R[:dimmat,:dimmat] = MASK*R
+
       Sp = np.sum(R)*dxp**2
-      apsf = mathft.ft2(padded_R*(np.cos(padded_pupil)+1j*np.sin(padded_pupil)),delta=1./dimmat)/Sp
+      apsf = mathft.ft2(padded_R*np.exp(-1j *padded_R*padded_pupil),delta=1./dxp)/Sp
       apsf = apsf[N_pad//2-dimmat//2:N_pad//2+dimmat//2,N_pad//2-dimmat//2:N_pad//2+dimmat//2]
+
       psf = np.abs(apsf)**2
       returns[1] = psf
-    
+   
    return returns
