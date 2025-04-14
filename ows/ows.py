@@ -115,10 +115,18 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
          MASK[Rpx >= PD[0]//2 +1] = 0
          MASK[Rpx < PD[1]//2] = 0
 
-   N_pad = 2*dimmat
+   if dimmat <= 2**5: 
+      N_pad = (2**6)
+   elif (2**5 < dimmat <= 2**6): 
+      N_pad = (2**8)
+   elif (2**6 < dimmat <= 2**7): 
+      N_pad = (2**10)
+   elif (2**7 < dimmat <= 2**8): 
+      N_pad = (2**12)
+   elif (2**8 < dimmat <= 2**9): 
+      N_pad = (2**14)
 
-
-   phase_screen = mathft.ift2(phaseft,dxp)
+   phase_screen = mathft.ift2(phaseft,dxp).real/500000
    phase_screen -= np.mean(phase_screen)
    phase_screen[MASK == 1] -= np.mean(phase_screen[MASK == 1])
 
@@ -130,15 +138,13 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    if PSF == True:
 
       padded_pupil = np.zeros((N_pad,N_pad))
-      padded_pupil[:dimmat,:dimmat] = MASK*phase_screen.real
+      padded_pupil[:dimmat,:dimmat] = MASK*phase_screen
       padded_R = np.zeros((N_pad,N_pad))
       padded_R[:dimmat,:dimmat] = MASK*R
 
       Sp = np.sum(R)*dxp**2
       apsf = mathft.ft2(padded_R*np.exp(-1j *padded_R*padded_pupil),delta=1./dxp)/Sp
-      Half_window = dimmat//2
-
-      #apsf = apsf[N_pad//2-Half_window//2:N_pad//2+Half_window//2,N_pad//2-Half_window//2:N_pad//2+Half_window//2]
+      apsf = apsf[N_pad//2-dimmat//2:N_pad//2+dimmat//2,N_pad//2-dimmat//2:N_pad//2+dimmat//2]
 
       psf = np.abs(apsf)**2
       returns[1] = psf
