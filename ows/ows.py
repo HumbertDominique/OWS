@@ -43,12 +43,13 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
       SEED (int): Seed for the random number generator. (default None)
       PSF (bool): option to return the PSF associated with the phase screen
       PUPIL (bool): True will crop it to a pupil of diameter dimmat if PD = [0,0]
-      PD (ndarray of int): Pupil diameters in meters. PD[outer diameter, inner diameter)
+      PD (ndarray of int): Pupil diameters in meters. PD[outer diameter-1, inner diameter)
 
    Returns (list):
       phase_screen (ndarray): real 2D array representing the generated phase screen.
       psf (ndarray): real 2D array representing the PSF associated with the phase screen
-
+      MASK (ndarray): 0, 1 integer array representing the pupil.
+      R (ndarray): matrix radius
    TODO: Add a dimmat argument to allow more pixels on the phase screen and PSF than PSD.
    TODO: Make it so the pupil diameters can be introduced either as pixel values or discances D [m] = D[px]/dxp (Needs to be checked)
 
@@ -79,14 +80,15 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    # ------------ Phase screen ------------
    # ------------ Phase screen ------------
    # ------------ Phase screen ------------
-   returns = [[None],[None]]
+   returns = [[None],[None],[None]]
    rng = np.random.default_rng(seed=SEED)
 
    pxR = np.linspace(-1 ,1,dimmat)*dxp*dimmat/2  
    xx, yy = np.meshgrid(pxR,pxR)
    R = np.sqrt(xx**2 + yy**2)  # pupil plane spatial frequency radius
-   pxRpx = np.linspace(-dimmat//2 ,dimmat//2,dimmat)
-   xx, yy = np.meshgrid(pxRpx,pxRpx)
+   returns[3] = R
+   pxR = np.linspace(-dimmat//2 ,dimmat//2,dimmat)
+   xx, yy = np.meshgrid(pxR,pxR)
    Rpx = np.sqrt(xx**2 + yy**2)  # Pupil radius in pixel
 
    PP = np.zeros((dimmat+1, dimmat+1)) # Phase power [dimmat+1, dimmat+1] in order to have a pixel in the middle [rad^2/m^-2]
@@ -148,5 +150,6 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
 
       psf = np.abs(apsf)**2
       returns[1] = psf
-   
+
+   returns[2] = MASK
    return returns
