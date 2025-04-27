@@ -80,7 +80,7 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    # ------------ Phase screen ------------
    # ------------ Phase screen ------------
    # ------------ Phase screen ------------
-   returns = [[None],[None],[None]]
+   returns = [[None],[None],[None],[None]]
    rng = np.random.default_rng(seed=SEED)
 
    pxR = np.linspace(-1 ,1,dimmat)*dxp*dimmat/2  
