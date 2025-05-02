@@ -3,8 +3,8 @@ __pycache__/
 *py[cod]
 
 # Juyter notebook checkpoints
-.ipynb_checkpoints
-*/.ipynb_checkpoints/*
+# .ipynb_checkpoints
+# */.ipynb_checkpoints/*
 #Egg info files produced by pip installation
 *egg-info
 
