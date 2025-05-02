@@ -7,12 +7,12 @@ def psd(dimmat, dxp, r0, wl, L0 = -1):
    """
    Generates a Phase power spectrum (PSD).
    Parameters:
-   dimmat (int): Size of the phase screen matrix (should must be even).
-   r0 (float): Fried's parameter [m]
-   dxp (float): Pupil plane pixel size [m/rad].
-   L0 (float): Outer scale of turbulence [m] (set to -1 for infinite scale).
+      dimmat (int): Size of the phase screen matrix (should must be even).
+      r0 (float): Fried's parameter [m]
+      dxp (float): Pupil plane pixel size [m/rad].
+      L0 (float): Outer scale of turbulence [m] (set to -1 for infinite scale).
    Returns:
-   PSD (ndarray): 2D array representing the generated phase screen.
+      PSD (ndarray): 2D array representing the generated phase screen.
    """    
    # 2025.03.14 - Original version based on paola.pro (22.12.2022) by Laurent Jolissaint (HES-SO), lines 3659+
     
@@ -80,13 +80,11 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    # ------------ Phase screen ------------
    # ------------ Phase screen ------------
    # ------------ Phase screen ------------
-   returns = [[None],[None],[None],[None]]
    rng = np.random.default_rng(seed=SEED)
 
    pxR = np.linspace(-1 ,1,dimmat)*dxp*dimmat/2  
    xx, yy = np.meshgrid(pxR,pxR)
    R = np.sqrt(xx**2 + yy**2)  # pupil plane spatial frequency radius
-   returns[3] = R
    pxR = np.linspace(-dimmat//2 ,dimmat//2,dimmat)
    xx, yy = np.meshgrid(pxR,pxR)
    Rpx = np.sqrt(xx**2 + yy**2)  # Pupil radius in pixel
@@ -132,8 +130,6 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    phase_screen -= np.mean(phase_screen)
    phase_screen[MASK == 1] -= np.mean(phase_screen[MASK == 1])
 
-   returns[0] = MASK*phase_screen
-
    # ------------ PSF OPTION ------------
    # ------------ PSF OPTION ------------
    # ------------ PSF OPTION ------------
@@ -149,7 +145,98 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
       apsf = apsf[N_pad//2-dimmat//2:N_pad//2+dimmat//2,N_pad//2-dimmat//2:N_pad//2+dimmat//2]
 
       psf = np.abs(apsf)**2
-      returns[1] = psf
 
-   returns[2] = MASK
-   return returns
+   return MASK*phase_screen, psf, MASK, R
+
+def SHWFS(dimmat, N, F, wl, pupil_mask, R, phase_screen, dxp, lenslet_pad):
+   """
+   This function calculates the SH wavefront sensor response.
+   Parameters:
+     dimmat: size of the sub-aperture in pixels (integer)
+      N (int): number of lenslets along one dimension
+      F (float): focal length of the wavefront sensor
+      pupil_mask (ndarray): mask for the pupil, 1 inside and 0 outside
+      phase_screen (ndarray): phase screen to be illuminated by the wavefront sensor
+      lensled_pad (int): lenslet padding for the computation
+   Returns:
+      Lightfield (ndarray): Focal plane image of the phase screen through the lenslet array
+      DwDx (ndarray): Wavefront slope along x
+      DwDy (ndarray): Wavefront slope along y
+   """
+
+   #M = N # tom implement on recrangular sub-apertures
+   n = int(np.ceil(dimmat/N)) # By definition, the number of lenslets must be an integer
+   if N%2 == 0:
+       padded_dim = n*(N) # N+1 in order to have a lenslet centered on the optical axis
+   else:
+       padded_dim = n*(N+1)
+
+   # Pad the pupil mask for illuminaiton computation
+   padded_mask = np.zeros((padded_dim,padded_dim),int)
+   padded_mask[(padded_dim-dimmat)//2:(padded_dim-dimmat)//2 + dimmat,(padded_dim-dimmat)//2:(padded_dim-dimmat)//2 + dimmat] = pupil_mask
+
+   padded_phase_screen = np.zeros_like(padded_mask,np.float64)
+   padded_phase_screen[(padded_dim-dimmat)//2:(padded_dim-dimmat)//2 + dimmat,(padded_dim-dimmat)//2:(padded_dim-dimmat)//2 + dimmat] = phase_screen
+
+   padded_R = np.zeros_like(padded_phase_screen,np.float64)
+   padded_R[(padded_dim-dimmat)//2:(padded_dim-dimmat)//2 + dimmat,(padded_dim-dimmat)//2:(padded_dim-dimmat)//2 + dimmat] = R
+   padded_lightfield = np.zeros_like(padded_phase_screen,np.float64)
+
+   lenslet_mask = np.zeros_like(padded_mask)
+   active_lenslet_matrix = np.zeros((N,N))
+
+   ii=0
+   for i in range(0, padded_dim, n):
+       jj=0
+       for j in range(0, padded_dim, n):
+           lenslet = padded_mask[i:i+n, j:j+n]
+           if (lenslet.sum() >= (n*n)/2):
+               lenslet_mask[i:i+n, j:j+n] = 1
+               active_lenslet_matrix[ii,jj] = 1
+           jj += 1
+       ii +=1
+
+   k_max = N*N
+
+   lenslet_pad = 4
+   sub_ps = np.zeros((lenslet_pad*n,lenslet_pad*n))
+   sub_R = np.zeros_like(sub_ps)
+
+   active_lenslet_matrix_1D = active_lenslet_matrix.reshape(N*N)
+   Xc = np.zeros((active_lenslet_matrix_1D.shape[0]))
+   Yc = np.zeros_like(Xc)
+   k = 0
+   for j in range(0, padded_dim, n):
+       for i in range(0, padded_dim, n):
+           if int(active_lenslet_matrix_1D[k]) == 1:
+               Xc[k] = i+n/2
+               Yc[k] = j+n/2
+               sub_ps[0:n,0:n] = padded_phase_screen[i:i+n,j:j+n]
+               sub_R[0:n,0:n] = padded_R[i:i+n,j:j+n]  
+               sub_sp = np.sum(sub_R)*dxp**2
+               apsf = (mathft.ft2(sub_R*np.exp(-1j *sub_R*sub_ps),delta=1./dxp)/sub_sp)/(wl*F) # focal plane through lenslet U = F{R*ps}/(lambda*f)
+               padded_lightfield[i:i+n,j:j+n] = np.abs(apsf[lenslet_pad*n//2-n//2:lenslet_pad*n//2+n//2,lenslet_pad*n//2-n//2:lenslet_pad*n//2+n//2])**2
+           k +=1
+
+   ### 2. Computing the spot centres
+   Xr = np.zeros_like(Xc)
+   Yr = np.zeros_like(Xc)
+   Xs = np.linspace(0 ,padded_dim-1,padded_dim)
+   xx, yy = np.meshgrid(Xs,Xs)
+
+   XI = xx*padded_lightfield
+   YI = yy*padded_lightfield
+   k = 0
+   for i in range(0, padded_dim, n):
+       for j in range(0, padded_dim, n):
+           if int(active_lenslet_matrix_1D[k]) == 1:
+               Xr[k] = XI[i:i+n,j:j+n].sum()/padded_lightfield[i:i+n,j:j+n].sum()
+               Yr[k] = YI[i:i+n,j:j+n].sum()/padded_lightfield[i:i+n,j:j+n].sum()
+           k +=1
+
+   ### 3. Extract the WF slopes
+   DwDx = ((Xr-Xc)/F).reshape(N,N)
+   DwDy = ((Yr-Yc)/F).reshape(N,N)
+
+   return padded_lightfield, DwDx, DwDy
+
