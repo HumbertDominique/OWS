@@ -126,7 +126,8 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    elif (2**8 < dimmat <= 2**9): 
       N_pad = (2**14)
 
-   phase_screen = mathft.ift2(phaseft,dxp).real/500000
+   phase_screen = mathft.ift2(phaseft,dxp).real
+
    phase_screen -= np.mean(phase_screen)
    phase_screen[MASK == 1] -= np.mean(phase_screen[MASK == 1])
 
