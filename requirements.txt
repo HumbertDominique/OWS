@@ -6,3 +6,9 @@ ipywidgets
 ipympl
 ipykernel
 astropy
+pytorch
+torchvision
+tensorflow
+scikit-learn
+
+nvidia-pyindex

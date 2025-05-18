@@ -1,5 +1,6 @@
 import numpy as np
 from ows import fouriertransform as mathft
+from scipy.special import kv
 from matplotlib import pyplot as plt # for developpment only
 
 
@@ -53,7 +54,7 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    TODO: Add a dimmat argument to allow more pixels on the phase screen and PSF than PSD.
    TODO: Make it so the pupil diameters can be introduced either as pixel values or discances D [m] = D[px]/dxp (Needs to be checked)
 
-   Based one WaveSeeingLimited.pro, Laurent Jolissaint, March 24, 2025 
+   Based on WaveSeeingLimited.pro, Laurent Jolissaint, March 24, 2025 
    """
    # ------------ Input checks ------------
    # ------------ Input checks ------------
@@ -127,7 +128,6 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
       N_pad = (2**14)
 
    phase_screen = mathft.ift2(phaseft,dxp).real
-
    phase_screen -= np.mean(phase_screen)
    phase_screen[MASK == 1] -= np.mean(phase_screen[MASK == 1])
 
@@ -146,6 +146,8 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
       apsf = apsf[N_pad//2-dimmat//2:N_pad//2+dimmat//2,N_pad//2-dimmat//2:N_pad//2+dimmat//2]
 
       psf = np.abs(apsf)**2
+   else :
+      psf = None
 
    return MASK*phase_screen, psf, MASK, R
 
@@ -241,3 +243,94 @@ def SHWFS(dimmat, N, F, wl, pupil_mask, R, phase_screen, dxp, lenslet_pad):
 
    return padded_lightfield, DwDx, DwDy
 
+def phase_structure_function(rho, r0, L0):
+   """
+   Generates a phase screen base on a Phase Spectrum Density (PSD)
+   Parameters:
+       rho (int): Size of the phase screen matrix. must be even?
+       r0 (ndarray): Fried's parameter
+       L0 (float): Turbulence outer scale
+   Returns (list):
+       D_phi (ndarray): 2D array representing the phase structure
+   TODO: Error check
+   Based on "STEP-BY-STEP PROCEDURE FOR COMPUTING NUMERICALLY THE SEEING LIMITED POINT SPREAD FUNCTION FROM THE OPTICAL TURBULENCE PHASE STRUCTURE FUNCTION EQUATION" Laurent Jolissaint
+   """
+   # Constants for the von Karman model
+   a = 0.17166136 * (L0/r0)**(5/3)
+   b = 1.0056349
+   # Handle the case where rho is zero
+   D_phi = np.zeros_like(rho)
+   mask = rho > 0
+   # Apply the formula for non-zero rho
+   x = 2*np.pi*rho[mask]/L0
+   D_phi[mask] = a * (b - x**(5/6) * kv(5/6, x))
+   return D_phi
+
+def telescope_otf(nu_n, epsilon=None):
+   """
+   Computes a telescope's OTF
+   Parameters:
+       nu_n (ndarray): Normalized spatial frequencies
+       epsilon (float): obtruation ratio
+   Returns (list):
+       otf_tsc (ndarray): real 2D array representing the telescope OTF.
+   TODO: Error check
+   TODO: Implement anular pupils
+   Based on "STEP-BY-STEP PROCEDURE FOR COMPUTING NUMERICALLY THE SEEING LIMITED POINT SPREAD FUNCTION FROM THE OPTICAL TURBULENCE PHASE STRUCTURE FUNCTION EQUATION" Laurent Jolissaint
+   """
+   # Plain pupil case (no central obtruation)
+   otf_tsc = np.zeros_like(nu_n)
+   mask = nu_n <= 1
+   otf_tsc[mask] = (2/np.pi) * (np.arccos(nu_n[mask]) - nu_n[mask] * np.sqrt(1 - nu_n[mask]**2))
+   return otf_tsc
+    
+def atmospheric_otf(nu, r0, L0, wavelength):
+   """
+   Computes the atmoshpere's OTF
+   Parameters:
+       nu_n (ndarray): Normalized spatial frequencies
+   Returns (list):
+       otf_tsc (ndarray): real 2D array representing the telescope OTF.
+   TODO: Error check
+   Based on "STEP-BY-STEP PROCEDURE FOR COMPUTING NUMERICALLY THE SEEING LIMITED POINT SPREAD FUNCTION FROM THE OPTICAL TURBULENCE PHASE STRUCTURE FUNCTION EQUATION" Laurent Jolissaint
+   """
+   rho = wavelength * nu
+   D_phi = phase_structure_function(rho, r0, L0)
+   otf_atm = np.exp(-0.5 * D_phi)
+   return otf_atm
+
+def normalize(data):
+    min_val = np.min(data)
+    max_val = np.max(data)
+    return (data - min_val) / (max_val - min_val)
+
+
+def pixel_adder(data, scale_factor = [1,1], final_shape = None):
+    """
+    Generates a phase screen base on a Phase Spectrum Density (PSD)
+    Parameters:
+        data (ndarray): source data
+        scale_factor (floar): scalling factor. Can be > or < o
+        final_shape (ndarray): Option to input directly the desired shape. final_shape/data.shape must be an integer or the final shape will be data.shape*(final_shape//data.shape).
+    Returns (list):
+        D_phi (ndarray): 2D array representing the phase structure
+    TODO: Error check
+    """
+
+    datashape = data.shape
+
+    if final_shape == None:
+        iscale = scale_factor[0]
+        jscale = scale_factor[1]
+    else:
+        iscale = datashape[0]*(final_shape//datashape[0])
+        jscale = datashape[1]*(final_shape//datashape[1])
+    
+    image_scaled = np.zeros((int(scale_factor[0]*datashape[0]), int(scale_factor[1]*datashape[1])))
+    for i in range(0, datashape[0]):
+        for j in range(0, datashape[1]):
+            iscaled = i*iscale
+            jscaled = j*jscale
+            image_scaled[int(iscaled):int(iscaled+iscale), int(jscaled):int(jscaled+jscale)] = data[i,j]
+
+    return image_scaled
