@@ -36,7 +36,7 @@ def psd(dimmat, dxp, r0, wl, L0 = -1):
 
 def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    """
-   Generates a phase screen base on a Phase Spectrum Density (PSD)
+   Generates a phase screen base on a Phase Spectrum Density (PSD). The padding should be taken into account with PD[0] <= PSD.shape[0]//2. Default is PD[0] = PSD.shape[0]/2
    Parameters:
       dimmat (int): Size of the phase screen matrix. must be even?
       PSD (ndarray): phase spectrum density
@@ -86,6 +86,8 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    pxR = np.linspace(-1 ,1,dimmat)*dxp*dimmat/2  
    xx, yy = np.meshgrid(pxR,pxR)
    R = np.sqrt(xx**2 + yy**2)  # pupil plane spatial frequency radius
+
+   ## grid for pupil mask
    pxR = np.linspace(-dimmat//2 ,dimmat//2,dimmat)
    xx, yy = np.meshgrid(pxR,pxR)
    Rpx = np.sqrt(xx**2 + yy**2)  # Pupil radius in pixel
@@ -111,45 +113,36 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    MASK = np.ones((dimmat,dimmat))
    if PUPIL is True:
       if PD[0] == 0:
-        MASK[Rpx >= dimmat//2 +1] = 0
+        PD[0] = dimmat//2
+        MASK[Rpx >= PD[0]//2 +1] = 0
       else:
          MASK[Rpx >= PD[0]//2 +1] = 0
          MASK[Rpx < PD[1]//2] = 0
 
-   if dimmat <= 2**5: 
-      N_pad = (2**6)
-   elif (2**5 < dimmat <= 2**6): 
-      N_pad = (2**8)
-   elif (2**6 < dimmat <= 2**7): 
-      N_pad = (2**10)
-   elif (2**7 < dimmat <= 2**8): 
-      N_pad = (2**12)
-   elif (2**8 < dimmat <= 2**9): 
-      N_pad = (2**14)
-
    phase_screen = mathft.ift2(phaseft,dxp).real
    phase_screen -= np.mean(phase_screen)
-   phase_screen[MASK == 1] -= np.mean(phase_screen[MASK == 1])
+   #phase_screen[MASK == 1] -= np.mean(phase_screen[MASK == 1]) # if padding with the phsae screen istelf, cannot remove piston only un the pupil
 
    # ------------ PSF OPTION ------------
    # ------------ PSF OPTION ------------
    # ------------ PSF OPTION ------------
    if PSF == True:
-
-      padded_pupil = np.zeros((N_pad,N_pad))
-      padded_pupil[:dimmat,:dimmat] = MASK*phase_screen
-      padded_R = np.zeros((N_pad,N_pad))
-      padded_R[:dimmat,:dimmat] = MASK*R
-
+      # padded_pupil = np.zeros((N_pad,N_pad))
+      # padded_pupil[:dimmat,:dimmat] = MASK*phase_screen
+      # padded_R = np.zeros((N_pad,N_pad))
+      padded_pupil = MASK*phase_screen
+      # padded_R = np.zeros((N_pad,N_pad))
+      # padded_R[:dimmat,:dimmat] = MASK*R
+      padded_R = MASK*R
       Sp = np.sum(R)*dxp**2
       apsf = mathft.ft2(padded_R*np.exp(-1j *padded_R*padded_pupil),delta=1./dxp)/Sp
-      apsf = apsf[N_pad//2-dimmat//2:N_pad//2+dimmat//2,N_pad//2-dimmat//2:N_pad//2+dimmat//2]
-
+      apsf = apsf[dimmat//2 - PD[0]//2:dimmat//2 + PD[0]//2,dimmat//2 - PD[0]//2:dimmat//2 + PD[0]//2]
       psf = np.abs(apsf)**2
    else :
       psf = None
+   #return padded_pupil[dimmat//2 - PD[0]//2:dimmat//2 + PD[0]//2,dimmat//2 - PD[0]//2:dimmat//2 + PD[0]//2], psf, MASK, R
+   return phase_screen, psf, MASK, R
 
-   return MASK*phase_screen, psf, MASK, R
 
 def SHWFS(dimmat, N, F, wl, pupil_mask, R, phase_screen, dxp, lenslet_pad):
    """
@@ -299,6 +292,29 @@ def atmospheric_otf(nu, r0, L0, wavelength):
    otf_atm = np.exp(-0.5 * D_phi)
    return otf_atm
 
+def calculate_diffLim_psf(PD, dimmat, dxp):
+    MASK = np.ones((dimmat,dimmat))
+    pxR = np.linspace(-dimmat//2 ,dimmat//2,dimmat)
+    xx, yy = np.meshgrid(pxR,pxR)
+    Rpx = np.sqrt(xx**2 + yy**2)  # Pupil radius in pixel for mas
+
+    pxR = np.linspace(-1 ,1,dimmat)*dxp*dimmat/2  
+    xx, yy = np.meshgrid(pxR,pxR)
+    R = np.sqrt(xx**2 + yy**2)  # pupil plane spatial frequency radius
+
+    if PD[0] == 0:
+      MASK[Rpx >= dimmat//4 +1] = 0
+    else:
+       MASK[Rpx >= PD[0]//4 +1] = 0
+       MASK[Rpx < PD[1]//4] = 0
+
+    padded_R = MASK*Rpx
+    Sp = np.sum(R)*dxp**2
+
+    apsf = mathft.ft2(padded_R*np.exp(-1j *padded_R),delta=1./dxp)/Sp
+    diff_psf = np.abs(apsf)**2
+    return diff_psf
+
 def normalize(data):
     min_val = np.min(data)
     max_val = np.max(data)
@@ -334,3 +350,4 @@ def pixel_adder(data, scale_factor = [1,1], final_shape = None):
             image_scaled[int(iscaled):int(iscaled+iscale), int(jscaled):int(jscaled+jscale)] = data[i,j]
 
     return image_scaled
+
