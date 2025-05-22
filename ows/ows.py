@@ -114,7 +114,7 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    if PUPIL is True:
       if PD[0] == 0:
         PD[0] = dimmat//2
-        MASK[Rpx >= PD[0]//2 +1] = 0
+        MASK[Rpx >= PD[0]/2 +1] = 0
       else:
          MASK[Rpx >= PD[0]//2 +1] = 0
          MASK[Rpx < PD[1]//2] = 0
@@ -144,7 +144,7 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
    return phase_screen, psf, MASK, R
 
 
-def SHWFS(dimmat, N, F, wl, pupil_mask, R, phase_screen, dxp, lenslet_pad):
+def SHWFS(dimmat, PD,  N, F, wl, pupil_mask, R, phase_screen, dxp, lenslet_pad = 2):
     """
     This function calculates the SH wavefront sensor response.
     Parameters:
@@ -160,44 +160,43 @@ def SHWFS(dimmat, N, F, wl, pupil_mask, R, phase_screen, dxp, lenslet_pad):
        DwDy (ndarray): Wavefront slope along y
     """
 
-    #M = N # tom implement on rectangular sub-apertures
-    n = int(np.ceil(dimmat/N)) # By definition, the number of lenslet must be an integer
+    #M = N # to implement on rectangular sub-apertures
+    n = int(np.ceil(PD[0]/N)) # By definition, the number of lenslet must be an integer
     if N%2 == 0:
-        padded_dim = n*(N) # N+1 in order to have a lenslet centered on the optical axis
+        padded_dim = n*(N) # N+1 in order to have a lenslet centered on the optical axis (not implemented here)
     else:
         padded_dim = n*(N+1)
-    print(padded_dim)
     # Pad the pupil mask for illumination computation
     padded_mask = np.zeros((padded_dim,padded_dim),int)
-    # padded_mask[(padded_dim-dimmat)//2:(padded_dim-dimmat)//2 + dimmat,(padded_dim-dimmat)//2:(padded_dim-dimmat)//2 + dimmat] = pupil_mask # for use with "0-padding"
-    padded_mask = pupil_mask
+    padded_mask = pupil_mask[dimmat//2-padded_dim//2:dimmat//2+padded_dim//2,dimmat//2-padded_dim//2:dimmat//2+padded_dim//2] # for use with "0-padding"
+    # padded_mask = pupil_mask
 
     padded_phase_screen = np.zeros_like(padded_mask,np.float64)
-    #padded_phase_screen[(padded_dim-dimmat)//2:(padded_dim-dimmat)//2 + dimmat,(padded_dim-dimmat)//2:(padded_dim-dimmat)//2 + dimmat] = phase_screen # for use with "0-padding"
-    padded_phase_screen = phase_screen
+    padded_phase_screen = phase_screen[dimmat//2-padded_dim//2:dimmat//2+padded_dim//2,dimmat//2-padded_dim//2:dimmat//2+padded_dim//2] # for use with "0-padding"
+    # padded_phase_screen = phase_screen
 
     padded_R = np.zeros_like(padded_phase_screen,np.float64)
-    #padded_R[(padded_dim-dimmat)//2:(padded_dim-dimmat)//2 + dimmat,(padded_dim-dimmat)//2:(padded_dim-dimmat)//2 + dimmat] = R # for use with "0-padding"
-    padded_R = R
+    padded_R = R[dimmat//2-padded_dim//2:dimmat//2+padded_dim//2,dimmat//2-padded_dim//2:dimmat//2+padded_dim//2] # for use with "0-padding"
+    # padded_R = R
     padded_lightfield = np.zeros_like(padded_phase_screen,np.float64)
 
     lenslet_mask = np.zeros_like(padded_mask)
     active_lenslet_matrix = np.zeros((N,N))
 
+	# Compute the "active" lenslets
     ii=0
     for i in range(0, padded_dim, n):
         jj=0
         for j in range(0, padded_dim, n):
             lenslet = padded_mask[i:i+n, j:j+n]
             if (lenslet.sum() >= (n*n)/2):
-                lenslet_mask[i:i+n, j:j+n] = 1
+                lenslet_mask[i:i+2, j:j+n] = 1
                 active_lenslet_matrix[ii,jj] = 1
             jj += 1
         ii +=1
 
     k_max = N*N
 
-    lenslet_pad = 4
     sub_ps = np.zeros((lenslet_pad*n,lenslet_pad*n))
     sub_R = np.zeros_like(sub_ps)
 
@@ -238,6 +237,7 @@ def SHWFS(dimmat, N, F, wl, pupil_mask, R, phase_screen, dxp, lenslet_pad):
     DwDy = ((Yr-Yc)/F).reshape(N,N)
 
     return padded_lightfield, DwDx, DwDy
+
 
 def phase_structure_function(rho, r0, L0):
    """
@@ -295,7 +295,7 @@ def atmospheric_otf(nu, r0, L0, wavelength):
    otf_atm = np.exp(-0.5 * D_phi)
    return otf_atm
 
-def calculate_diffLim_psf(PD, dimmat, dxp):
+def compute_diffLim_psf(PD, dimmat, dxp):
     MASK = np.ones((dimmat,dimmat))
     pxR = np.linspace(-dimmat//2 ,dimmat//2,dimmat)
     xx, yy = np.meshgrid(pxR,pxR)
@@ -306,12 +306,13 @@ def calculate_diffLim_psf(PD, dimmat, dxp):
     R = np.sqrt(xx**2 + yy**2)  # pupil plane spatial frequency radius
 
     if PD[0] == 0:
-      MASK[Rpx >= dimmat//4 +1] = 0
+        PD[0] = dimmat//2
+        MASK[Rpx >= PD[0]/2 +1] = 0
     else:
-       MASK[Rpx >= PD[0]//4 +1] = 0
-       MASK[Rpx < PD[1]//4] = 0
+        MASK[Rpx >= PD[0]//4 +1] = 0
+        MASK[Rpx < PD[1]//4] = 0
 
-    padded_R = MASK*Rpx
+    padded_R = MASK*R
     Sp = np.sum(R)*dxp**2
 
     apsf = mathft.ft2(padded_R*np.exp(-1j *padded_R),delta=1./dxp)/Sp
