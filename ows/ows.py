@@ -28,7 +28,7 @@ def psd(dimmat, dxp, r0, wl, L0 = -1):
    fx = np.linspace(-1,1,dimmat)*(1./(2*dxp))
    freqX, freqY = np.meshgrid(fx,fx)
    freqR = np.sqrt(freqX**2 + freqY**2)  # pupil plane spatial frequency radius
-   w = freqR.nonzero()
+   w = freqR.nonzero() # basically the center pixel if centered. If N is pair. It does not exist
    PSD = np.zeros_like(freqR, dtype=np.float64)  # Ensure PSD is the same shape and dtype as freqRtype
    PSD[w] = 0.0229*r0l**(-5.0/3) *(freqR[w]**2 + (L0 != -1)/L0**2)**(-11.0/6) # Spatial power spectrum with outer scale
 
@@ -53,6 +53,7 @@ def phase_screen(PSD, dxp, SEED = None, PSF=True, PUPIL = True, PD = [0,0]):
       R (ndarray): matrix radius
    TODO: Add a dimmat argument to allow more pixels on the phase screen and PSF than PSD.
    TODO: Make it so the pupil diameters can be introduced either as pixel values or discances D [m] = D[px]/dxp (Needs to be checked)
+   TODO: Make it so that the PSF = true option REQUIRES a pupil.
 
    Based on WaveSeeingLimited.pro, Laurent Jolissaint, March 24, 2025 
    """
@@ -152,6 +153,7 @@ def SHWFS(dimmat, PD,  N, F, wl, pupil_mask, R, phase_screen, dxp, lenslet_pad =
        N (int): number of lenslets along one dimension
        F (float): focal length of the wavefront sensor
        pupil_mask (ndarray): mask for the pupil, 1 inside and 0 outside
+       R (ndarray): The radius matrix associated with the pupil
        phase_screen (ndarray): phase screen to be illuminated by the wavefront sensor
        lensled_pad (int): lenslet padding for the computation
     Returns:
@@ -262,6 +264,7 @@ def phase_structure_function(rho, r0, L0):
    D_phi[mask] = a * (b - x**(5/6) * kv(5/6, x))
    return D_phi
 
+
 def telescope_otf(nu_n, epsilon=None):
    """
    Computes a telescope's OTF
@@ -296,6 +299,17 @@ def atmospheric_otf(nu, r0, L0, wavelength):
    return otf_atm
 
 def compute_diffLim_psf(PD, dimmat, dxp):
+    """
+   Computes a difraction limited PSF
+   Parameters:
+       PD (list): inner and outer pupil diameter
+       dimmat (int): size of the matrix
+       dxp (float): pixel size of the pupil
+   Returns (list):
+       (ndarray): real 2D array representing the diffraction limited OTF.
+   TODO: Error check
+   Based on "STEP-BY-STEP PROCEDURE FOR COMPUTING NUMERICALLY THE SEEING LIMITED POINT SPREAD FUNCTION FROM THE OPTICAL TURBULENCE PHASE STRUCTURE FUNCTION EQUATION" Laurent Jolissaint
+   """
     MASK = np.ones((dimmat,dimmat))
     pxR = np.linspace(-dimmat//2 ,dimmat//2,dimmat)
     xx, yy = np.meshgrid(pxR,pxR)
