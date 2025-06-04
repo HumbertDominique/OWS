@@ -5,18 +5,15 @@ from tensorflow.keras.models import Model
 
 # Define the Dice coefficient metric for evaluating segmentation performance 
 def dice_coef(y_true, y_pred): 
-    # Flatten the arrays to compute the intersection 
     y_true_f = K.flatten(y_true) 
     y_pred_f = K.flatten(y_pred) 
     intersection = K.sum(y_true_f * y_pred_f) 
-     
-    # Compute Dice coefficient 
+
     return (2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1) 
  
-# Define the loss function based on the Dice coefficient 
+
 def mse_loss(y_true, y_pred): 
     mse = tf.keras.losses.MeanSquaredError()
-    # Negative Dice coefficient for use as a loss function 
     return mse(y_true, y_pred)
 
 def double_conv(x, out_channels):
